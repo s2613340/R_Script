@@ -45,7 +45,7 @@ ecp_bootstrap <- calculate_coverage(dataex2, "norm.boot")
 cat("Empirical Coverage Probability - Stochastic Regression Imputation: ", ecp_stochastic, "\n")
 cat("Empirical Coverage Probability - Bootstrap Imputation: ", ecp_bootstrap, "\n")
 
-#Q3.2
+#Q3B
 # Load required libraries
 library(maxLik)
 
