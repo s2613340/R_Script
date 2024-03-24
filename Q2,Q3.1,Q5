@@ -1,0 +1,157 @@
+#Q2
+library(mice)
+
+# Load the data change the path where the data is stored
+load("C:/Users/Nattakamon/Downloads/dataex2.Rdata")
+
+# Initialize the number of datasets and the seed for reproducibility
+# Number of datasets
+n <- dim(dataex2)[3]  
+# Seed for random number generation
+seed <- 1  
+# Number of multiple imputations
+M <- 20  
+
+# Function to calculate the coverage count for a given imputation method
+calculate_coverage <- function(dataex2, method) {
+  coverage_count <- 0
+  
+  for (i in 1:n) {
+    dataset <- data.frame(x = dataex2[, 1, i], y = dataex2[, 2, i])
+    # Perform multiple imputation
+    imputed_data <- mice(dataset, method = method, m = M, seed = seed)
+    # Fit a linear model and pool the results
+    fit <- with(imputed_data, lm(y ~ x))
+    pooled_fit <- pool(fit)
+    # Extract the confidence intervals for the slope coefficient
+    ci <- summary(pooled_fit,conf.int=TRUE)[2,]
+    
+    # Check if the true beta_1 value is within the confidence interval
+    if (ci$'2.5' <= 3 && ci$'97.5' >= 3) {
+      coverage_count <- coverage_count + 1
+    }
+  }
+  
+  # Calculate the empirical coverage probability
+  coverage_rate <- coverage_count / n
+  return(coverage_rate)
+}
+
+# Calculate the empirical coverage probabilities for both methods
+ecp_stochastic <- calculate_coverage(dataex2, "norm.nob")
+ecp_bootstrap <- calculate_coverage(dataex2, "norm.boot")
+
+# Print the coverage probabilities for both methods
+cat("Empirical Coverage Probability - Stochastic Regression Imputation: ", ecp_stochastic, "\n")
+cat("Empirical Coverage Probability - Bootstrap Imputation: ", ecp_bootstrap, "\n")
+
+#Q3.2
+# Load required libraries
+library(maxLik)
+
+# Load the data change the path where the data is stored
+load("C:/Users/Nattakamon/Downloads/dataex3.Rdata")
+
+# Extract variables from the dataex3 list
+X <- dataex3$X
+R <- dataex3$R
+
+logLikFunction <- function(mu, X, R, sigma) {
+  # Calculate the normal density for uncensored data and cumulative probability for censored data
+  phi <- dnorm(X, mean = mu, sd = sigma)
+  Phi <- pnorm(X, mean = mu, sd = sigma)
+  
+  # Log-likelihood contribution from uncensored data
+  ll_uncensored <- R * log(phi)
+  # Log-likelihood contribution from censored data should use Phi, not 1 - Phi
+  ll_censored <- (1 - R) * log(Phi)
+  
+  # Combine the two contributions and sum over all observations
+  ll <- ll_uncensored + ll_censored
+  sum(ll)
+}
+
+
+# Known variance (standard deviation in this case since we need the sd for dnorm and pnorm)
+sigma <- sqrt(1.5^2)
+
+# Maximize the log-likelihood function
+# Use a reasonable starting value for mu, like the mean of X
+result <- maxLik(logLikFunction, start = c(mu = mean(X)), X = X, R = R, sigma = sigma)
+
+# Get the estimate of mu
+mu_estimate <- coefficients(result)
+
+# Display the result
+print(mu_estimate)
+
+#Q5
+# Load required libraries
+library(maxLik)
+
+# Load the data change the path where the data is stored
+load("C:/Users/Nattakamon/Downloads/dataex5.Rdata")  
+
+# Access the data from the list
+X <- dataex5$X
+Y <- dataex5$Y
+
+# Function to compute the logistic probability
+logistic_function <- function(X, beta) {
+  exp(beta[1] + X * beta[2]) / (1 + exp(beta[1] + X * beta[2]))
+}
+
+# Log-likelihood function considering observed data and probabilities for missing data
+log_likelihood <- function(beta, X, Y) {
+  p <- logistic_function(X, beta)
+  # Ensure probabilities are bounded away from 0 and 1
+  p <- pmax(pmin(p, 1 - .Machine$double.eps), .Machine$double.eps)
+  # Compute log-likelihood for observed data
+  ll_obs <- ifelse(!is.na(Y), Y * log(p) + (1 - Y) * log(1 - p), 0)
+  # For missing data, use the log of p (expected value for missing Y)
+  ll_mis <- ifelse(is.na(Y), log(p), 0)
+  sum(ll_obs + ll_mis, na.rm = TRUE)
+}
+
+# EM algorithm
+em_algorithm <- function(X, Y, max_iter = 1000, tolerance = 1e-8) {
+  beta <- c(0, 0)  # Initial guesses for beta0 and beta1
+  iter <- 0
+  converged <- FALSE
+  
+  while (!converged && iter < max_iter) {
+    iter <- iter + 1
+    
+    # E-step: Replace missing Y values with the expected probabilities (p_i)
+    p <- logistic_function(X, beta)
+    Y_imputed <- ifelse(is.na(Y), p, Y)
+    
+    # M-step: Maximize the log-likelihood using both observed and imputed Y values
+    mle <- maxLik(logLik = log_likelihood, start = beta, X = X, Y = Y_imputed)
+    new_beta <- coefficients(mle)
+    
+    # Check for convergence
+    if (sum(abs(new_beta - beta)) < tolerance) {
+      beta <- new_beta
+      converged <- TRUE
+      break
+    }
+    
+    beta <- new_beta
+  }
+  
+  if (converged) {
+    cat("EM algorithm converged in", iter, "iterations.\n")
+  } else {
+    cat("EM algorithm did not converge within the maximum number of iterations.\n")
+  }
+  
+  return(beta)
+}
+
+# Run the EM algorithm
+beta_estimates <- em_algorithm(X, Y)
+
+# Output the results
+names(beta_estimates) <- c("B0", "B1")
+print(beta_estimates)
